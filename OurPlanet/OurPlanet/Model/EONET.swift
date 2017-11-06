@@ -26,25 +26,67 @@ import RxSwift
 import RxCocoa
 
 class EONET {
-  static let API = "https://eonet.sci.gsfc.nasa.gov/api/v2.1"
-  static let categoriesEndpoint = "/categories"
-  static let eventsEndpoint = "/events"
+    static let API = "https://eonet.sci.gsfc.nasa.gov/api/v2.1"
+    static let categoriesEndpoint = "/categories"
+    static let eventsEndpoint = "/events"
 
-  static var ISODateReader: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZ"
-    return formatter
-  }()
+    static var ISODateReader: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZ"
+        return formatter
+    }()
 
-  static func filteredEvents(events: [EOEvent], forCategory category: EOCategory) -> [EOEvent] {
-    return events.filter { event in
-      return event.categories.contains(category.id) &&
-             !category.events.contains {
-               $0.id == event.id
-             }
+    static func filteredEvents(events: [EOEvent], forCategory category: EOCategory) -> [EOEvent] {
+        return events.filter { event in
+            return event.categories.contains(category.id) &&
+                !category.events.contains {
+                    $0.id == event.id
+            }
+            }
+            .sorted(by: EOEvent.compareDates)
     }
-    .sorted(by: EOEvent.compareDates)
-  }
-  
+
+    static func request(endpoint: String, query: [String: Any] = [:]) -> Observable<[String: Any]> {
+        do {
+            // 1 create url and return component
+            guard let url = URL(string: API)?.appendingPathComponent(endpoint),
+                var components = URLComponents(url: url, resolvingAgainstBaseURL: true)
+                else {
+                    throw EOError.invalidURL(endpoint)
+            }
+            // 2 create query with parameters
+            components.queryItems = try query.flatMap { (key, value) in
+                guard let v = value as? CustomStringConvertible else {
+                    throw EOError.invalidParameter(key, value)
+                }
+                return URLQueryItem(name: key, value: v.description)
+            }
+            guard let finalURL = components.url else {
+                throw EOError.invalidURL(endpoint)
+            }
+            // 3
+            let request = URLRequest(url: finalURL)
+
+            return URLSession.shared.rx.response(request: request)
+                .map { _, data -> [String: Any] in
+                    guard let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+                        let result = jsonObject as? [String: Any] else {
+                            throw EOError.invalidJSON(finalURL.absoluteString)
+                    }
+                    return result
+            }
+        } catch {
+            return Observable.empty()
+        }
+    }
+    // 4 create request and obseravable map into object EOCategory
+    static var categories: Observable<[EOCategory]> = {
+        return EONET.request(endpoint: categoriesEndpoint)
+            .map { data in
+                let categories = data["categories"] as? [[String: Any]] ?? []
+                return categories.flatMap(EOCategory.init).sorted { $0.name < $1.name }
+            }
+            .shareReplay(1)
+    }()
 }
