@@ -23,30 +23,73 @@
 import UIKit
 import RxSwift
 
-class EventsViewController : UIViewController, UITableViewDataSource {
+final class EventsViewController : UIViewController {
 
-  @IBOutlet var tableView: UITableView!
-  @IBOutlet var slider: UISlider!
-  @IBOutlet var daysLabel: UILabel!
+    // MARK: - IBoutlet
+    @IBOutlet var tableView: UITableView!
+    @IBOutlet var slider: UISlider!
+    @IBOutlet var daysLabel: UILabel!
 
-  override func viewDidLoad() {
-    super.viewDidLoad()
+    // MARK: - private properties
+    let events = Variable<[EOEvent]>([])
+    let days = Variable<Int>(360)
+    let fifteredEvents = Variable<[EOEvent]>([])
 
-    tableView.rowHeight = UITableViewAutomaticDimension
-    tableView.estimatedRowHeight = 60
-  }
+    fileprivate let bag = DisposeBag()
 
-  @IBAction func sliderAction(slider: UISlider) {
-  }
-  
-  // MARK: UITableViewDataSource
-  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-    return 0
-  }
-  
-  func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(withIdentifier: "eventCell") as! EventCell
-    return cell
-  }
-  
+    // MARK: - Life Circle
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        tableView.rowHeight = UITableViewAutomaticDimension
+        tableView.estimatedRowHeight = 60
+
+        events.asObservable()
+            .subscribe(onNext: { [weak self] _ in
+                self?.tableView.reloadData()
+            }).addDisposableTo(bag)
+
+        fifteredEvents.asObservable()
+            .subscribe(onNext: { [weak self] _ in
+                self?.tableView.reloadData()
+            })
+            .addDisposableTo(bag)
+
+        days.asObservable()
+            .subscribe(onNext: { [weak self] days in
+                self?.daysLabel.text = "Last \(days) days"
+            })
+            .addDisposableTo(bag)
+
+        Observable.combineLatest(days.asObservable(), events.asObservable()) { (days, events) -> [EOEvent] in
+            let maxInterval = TimeInterval(days * 24 * 3600)
+            return events.filter { event in
+                if let date = event.closeDate {
+                    return abs(date.timeIntervalSinceNow) < maxInterval
+                }
+                return true
+            }
+        }
+        .bindTo(fifteredEvents)
+        .addDisposableTo(bag)
+    }
+
+    // MARK: IBAction
+    @IBAction func sliderAction(slider: UISlider) {
+        days.value = Int(slider.value)
+    }
+
+}
+
+// MARK: UITableViewDataSource
+extension EventsViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return fifteredEvents.value.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "eventCell") as! EventCell
+        cell.configure(event: fifteredEvents.value[indexPath.row])
+        return cell
+    }
 }

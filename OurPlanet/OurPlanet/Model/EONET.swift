@@ -47,7 +47,8 @@ class EONET {
             .sorted(by: EOEvent.compareDates)
     }
 
-    static func request(endpoint: String, query: [String: Any] = [:]) -> Observable<[String: Any]> {
+    // MARK: - create request
+    private static func request(endpoint: String, query: [String: Any] = [:]) -> Observable<[String: Any]> {
         do {
             // 1 create url and return component
             guard let url = URL(string: API)?.appendingPathComponent(endpoint),
@@ -80,13 +81,37 @@ class EONET {
             return Observable.empty()
         }
     }
-    // 4 create request and obseravable map into object EOCategory
+    // MARK: Public properties
     static var categories: Observable<[EOCategory]> = {
-        return EONET.request(endpoint: categoriesEndpoint)
+        return request(endpoint: categoriesEndpoint)
             .map { data in
                 let categories = data["categories"] as? [[String: Any]] ?? []
                 return categories.flatMap(EOCategory.init).sorted { $0.name < $1.name }
             }
             .shareReplay(1)
     }()
+
+    // MARK: Public func
+    static func events(forLast days: Int = 360) -> Observable<[EOEvent]> {
+        let openEvents = events(forLast: days, closed: false)
+        let closeEvents = events(forLast: days, closed: true)
+
+        //openEvents.concat(closeEvents)
+        return Observable.of(openEvents, closeEvents)
+        .merge()
+            .reduce([], accumulator: { running, new in
+                running + new
+            })
+    }
+
+    // MARK: Private func
+    fileprivate static func events(forLast days: Int, closed: Bool) -> Observable<[EOEvent]> {
+        return request(endpoint: eventsEndpoint, query: ["days": NSNumber(value: days),"status": (closed ? "closed" : "open")  ])
+            .map { json in
+                guard let raw = json["events"] as? [[String: Any]] else {
+                throw EOError.invalidJSON(eventsEndpoint)
+                }
+                return raw.flatMap(EOEvent.init)
+        }
+    }
 }
