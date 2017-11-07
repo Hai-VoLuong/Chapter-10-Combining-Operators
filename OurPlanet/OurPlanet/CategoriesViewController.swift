@@ -34,6 +34,7 @@ final class CategoriesViewController: UIViewController {
     fileprivate let bag = DisposeBag()
 
     var activityIndicator: UIActivityIndicatorView!
+    let download = DownloadView()
 
     // MARK: - Life circle
     override func viewDidLoad() {
@@ -43,6 +44,10 @@ final class CategoriesViewController: UIViewController {
         activityIndicator.color = .black
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: activityIndicator)
         activityIndicator.startAnimating()
+
+        view.addSubview(download)
+        view.layoutIfNeeded()
+        print(download.frame)
 
         categories.asObservable()
             .subscribe(onNext: { [weak self] _ in
@@ -55,6 +60,10 @@ final class CategoriesViewController: UIViewController {
 
     // MARK: - Public func
     func startDownload() {
+
+        download.progress.progress = 0.0
+        download.label.text = "Download: 0%"
+
         let eoCategories = EONET.categories
         let downloadedEvents = eoCategories.flatMap{ categories in
             return Observable.from( categories.map { category in
@@ -78,8 +87,26 @@ final class CategoriesViewController: UIViewController {
             .do(onCompleted: { [weak self] in
                 DispatchQueue.main.async {
                     self?.activityIndicator.stopAnimating()
+                    self?.download.isHidden = true
                 }
             })
+
+        eoCategories.flatMap { categories in
+            return updatedCategories.scan(0) { count, _ in
+                return count + 1
+                }
+                .startWith(0)
+                .map { ($0, categories.count) }
+            }
+            .subscribe(onNext: { tuple in
+                DispatchQueue.main.async { [weak self] in
+                    let progress = Float(tuple.0) / Float(tuple.1)
+                    self?.download.progress.progress = progress
+                    let percent = Int(progress * 100.0)
+                    self?.download.label.text = "Download: \(percent)%"
+                }
+            })
+            .addDisposableTo(bag)
 
         eoCategories
         .concat(updatedCategories)
