@@ -39,8 +39,7 @@ class EONET {
 
     static func filteredEvents(events: [EOEvent], forCategory category: EOCategory) -> [EOEvent] {
         return events.filter { event in
-            return event.categories.contains(category.id) &&
-                !category.events.contains {
+            return event.categories.contains(category.id) && !category.events.contains {
                     $0.id == event.id
             }
             }
@@ -92,9 +91,9 @@ class EONET {
     }()
 
     // MARK: Public func
-    static func events(forLast days: Int = 360) -> Observable<[EOEvent]> {
-        let openEvents = events(forLast: days, closed: false)
-        let closeEvents = events(forLast: days, closed: true)
+    static func events(forLast days: Int = 360, category: EOCategory) -> Observable<[EOEvent]> {
+        let openEvents = events(forLast: days, closed: false, endpoint: category.endpoint)
+        let closeEvents = events(forLast: days, closed: true, endpoint: category.endpoint)
 
         //openEvents.concat(closeEvents)
         return Observable.of(openEvents, closeEvents)
@@ -105,11 +104,11 @@ class EONET {
     }
 
     // MARK: Private func
-    fileprivate static func events(forLast days: Int, closed: Bool) -> Observable<[EOEvent]> {
-        return request(endpoint: eventsEndpoint, query: ["days": NSNumber(value: days),"status": (closed ? "closed" : "open")  ])
+    fileprivate static func events(forLast days: Int, closed: Bool, endpoint: String) -> Observable<[EOEvent]> {
+        return request(endpoint: endpoint, query: ["days": NSNumber(value: days),"status": (closed ? "closed" : "open")  ])
             .map { json in
                 guard let raw = json["events"] as? [[String: Any]] else {
-                throw EOError.invalidJSON(eventsEndpoint)
+                throw EOError.invalidJSON(endpoint)
                 }
                 return raw.flatMap(EOEvent.init)
         }

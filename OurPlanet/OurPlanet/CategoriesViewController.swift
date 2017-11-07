@@ -48,19 +48,28 @@ final class CategoriesViewController: UIViewController {
     // MARK: - Public func
     func startDownload() {
         let eoCategories = EONET.categories
-        let downloadedEvents = EONET.events(forLast: 360)
-        let updateCategories = Observable.combineLatest(eoCategories, downloadedEvents) {
-            (categories, events) -> [EOCategory] in
-            return categories.map { category in
-                var cate = category
-                cate.events = events.filter {
-                    $0.categories.contains(category.id)
+        let downloadedEvents = eoCategories.flatMap{ categories in
+            return Observable.from( categories.map { category in
+                EONET.events(forLast: 360, category: category)
+            } )
+        }.merge(maxConcurrent: 2)
+
+        let updatedCategories = eoCategories.flatMap { categories in
+            downloadedEvents.scan(categories) { updated, events in
+                return updated.map { category in
+                    let eventsForCategory = EONET.filteredEvents(events: events, forCategory: category)
+                    if !eventsForCategory.isEmpty {
+                        var cat = category
+                        cat.events = cat.events + eventsForCategory
+                        return cat
+                    }
+                    return category
                 }
-                return cate
             }
         }
+
         eoCategories
-        .concat(updateCategories)
+        .concat(updatedCategories)
         .bindTo(categories)
         .addDisposableTo(bag)
     }
