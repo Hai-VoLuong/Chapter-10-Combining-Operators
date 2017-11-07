@@ -33,9 +33,17 @@ final class CategoriesViewController: UIViewController {
     fileprivate let categories = Variable<[EOCategory]>([])
     fileprivate let bag = DisposeBag()
 
+    var activityIndicator: UIActivityIndicatorView!
+
     // MARK: - Life circle
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        activityIndicator = UIActivityIndicatorView()
+        activityIndicator.color = .black
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: activityIndicator)
+        activityIndicator.startAnimating()
+
         categories.asObservable()
             .subscribe(onNext: { [weak self] _ in
                 DispatchQueue.main.async {
@@ -67,6 +75,11 @@ final class CategoriesViewController: UIViewController {
                 }
             }
         }
+            .do(onCompleted: { [weak self] in
+                DispatchQueue.main.async {
+                    self?.activityIndicator.stopAnimating()
+                }
+            })
 
         eoCategories
         .concat(updatedCategories)
