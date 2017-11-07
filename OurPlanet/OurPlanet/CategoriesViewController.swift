@@ -48,7 +48,19 @@ final class CategoriesViewController: UIViewController {
     // MARK: - Public func
     func startDownload() {
         let eoCategories = EONET.categories
+        let downloadedEvents = EONET.events(forLast: 360)
+        let updateCategories = Observable.combineLatest(eoCategories, downloadedEvents) {
+            (categories, events) -> [EOCategory] in
+            return categories.map { category in
+                var cate = category
+                cate.events = events.filter {
+                    $0.categories.contains(category.id)
+                }
+                return cate
+            }
+        }
         eoCategories
+        .concat(updateCategories)
         .bindTo(categories)
         .addDisposableTo(bag)
     }
@@ -63,14 +75,23 @@ extension CategoriesViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "categoryCell")!
         let category = categories.value[indexPath.row]
-        cell.textLabel?.text = category.name
-        cell.detailTextLabel?.text = category.description
+        cell.textLabel?.text = "\(category.name) (\(category.events.count))"
+        cell.accessoryType = (category.events.count > 0) ? .disclosureIndicator : .none
         return cell
     }
 }
 
 // MARK: - extension UITableViewDelegate
 extension CategoriesViewController: UITableViewDelegate {
-
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let category = categories.value[indexPath.row]
+        if !category.events.isEmpty {
+            let eventsController = storyboard?.instantiateViewController(withIdentifier: "events") as! EventsViewController
+            eventsController.title = category.name
+            eventsController.events.value = category.events
+            navigationController?.pushViewController(eventsController, animated: true)
+            tableView.deselectRow(at: indexPath, animated: true)
+        }
+    }
 }
 
